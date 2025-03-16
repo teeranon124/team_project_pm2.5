@@ -62,8 +62,18 @@ def load_and_prepare_features():
 
 X_features = load_and_prepare_features()
 
+# ข้อมูล 6 ชั่วโมงย้อนหลัง (7 วัน)
+historical_data_6H = {
+    "jsps001": pd.read_csv("6H_train/export-jsps001-6H.csv"),
+    "jsps013": pd.read_csv("6H_train/export-jsps013-1h-6H.csv"),
+    "jsps014": pd.read_csv("6H_train/export-jsps014-1h-6H.csv"),
+    "jsps018": pd.read_csv("6H_train/export-jsps018-1h.csv"),
+    "pm25_eng": pd.read_csv("6H_train/export-pm25_eng-1h.csv"),
+    "r202_test_wifi": pd.read_csv("6H_train/export-r202_test_wifi-1h.csv"),
+}
+
 # ข้อมูล 7 วันย้อนหลัง
-historical_data = {
+historical_data_1D = {
     "jsps001": pd.read_csv("7D_train/export-jsps001-6H.csv"),
     "jsps013": pd.read_csv("7D_train/export-jsps013-1h-6H.csv"),
     "jsps014": pd.read_csv("7D_train/export-jsps014-1h-6H.csv"),
@@ -72,11 +82,17 @@ historical_data = {
     "r202_test_wifi": pd.read_csv("7D_train/export-r202_test_wifi-1h-6H.csv"),
 }
 
-# แปลง timestamp ในข้อมูล 7 วันย้อนหลัง
-for loc, data in historical_data.items():
+# แปลง timestamp ในข้อมูล 6 ชั่วโมงย้อนหลัง
+for loc, data in historical_data_6H.items():
     data["timestamp"] = pd.to_datetime(data["timestamp"], format="mixed")
     data.set_index("timestamp", inplace=True)
     data.index = data.index.to_period("6H")
+
+# แปลง timestamp ในข้อมูล 7 วันย้อนหลัง
+for loc, data in historical_data_1D.items():
+    data["timestamp"] = pd.to_datetime(data["timestamp"], format="mixed")
+    data.set_index("timestamp", inplace=True)
+    data.index = data.index.to_period("D")
 
 # สถานที่และตำแหน่ง
 locations = {
@@ -90,6 +106,17 @@ locations = {
 
 # สร้าง Dash App
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+# สร้าง Marker พร้อม Tooltip ที่แสดงชื่อและค่า pm_2_5 (ทศนิยม 2 ตำแหน่ง)
+markers = [
+    dl.Marker(
+        position=[locations[loc]["lat"], locations[loc]["lon"]],
+        children=dl.Tooltip(
+            f"{locations[loc]['name']} - PM2.5: {round(historical_data_6H[loc].iloc[-1]['pm_2_5'], 2)}"
+        ),
+    )
+    for loc in locations
+]
 
 app.layout = dbc.Container(
     [
@@ -107,19 +134,8 @@ app.layout = dbc.Container(
                         dl.Map(
                             [
                                 dl.TileLayer(),
-                                *[
-                                    dl.Marker(
-                                        position=[
-                                            locations[loc]["lat"],
-                                            locations[loc]["lon"],
-                                        ],
-                                        children=dl.Tooltip(locations[loc]["name"]),
-                                    )
-                                    for loc in locations
-                                ],
-                                dl.LayerGroup(
-                                    id="map-click-layer"
-                                ),  # เพิ่ม LayerGroup สำหรับ Popup
+                                *markers,  # ใช้ markers ที่สร้างใหม่
+                                dl.LayerGroup(id="map-click-layer"),
                             ],
                             id="map",
                             style={"height": "500px", "width": "100%"},
@@ -229,8 +245,9 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 @app.callback(
     Output("map-click-layer", "children"),  # อัปเดต LayerGroup เพื่อแสดง Popup
     Input("map", "click_lat_lng"),  # รับค่าตำแหน่งที่คลิกบนแผนที่
+    State("time_frame", "value"),  # รับค่า time_frame จาก Dropdown
 )
-def map_click(click_lat_lng):
+def map_click(click_lat_lng, time_frame):
     if not click_lat_lng:
         return None
 
@@ -248,19 +265,21 @@ def map_click(click_lat_lng):
             closest_location = loc
 
     if closest_location:
+        # เลือกข้อมูล historical_data ตาม time_frame
+        if time_frame == "6H":
+            historical_data = historical_data_6H
+        else:
+            historical_data = historical_data_1D
+
         # ดึงข้อมูลล่าสุดจาก historical_data
         latest_data = historical_data[closest_location].iloc[-1]
-        pm25 = latest_data["pm_2_5"]
-        temperature = latest_data.get("temperature", "N/A")  # หากไม่มีคอลัมน์ temperature
-        humidity = latest_data.get("humidity", "N/A")  # หากไม่มีคอลัมน์ humidity
+        pm25 = latest_data["pm_2_5"]  # ดึงค่า PM2.5 ล่าสุด
 
         # สร้าง Popup
         popup_content = html.Div(
             [
                 html.H4(f"Location: {locations[closest_location]['name']}"),
-                html.P(f"PM2.5: {pm25}"),
-                html.P(f"Temperature: {temperature}"),
-                html.P(f"Humidity: {humidity}"),
+                html.P(f"PM2.5: {pm25}"),  # แสดงเฉพาะค่า PM2.5
             ]
         )
 
@@ -328,27 +347,46 @@ def predict(
                 continue
 
         # สร้างกราฟ
-        fig = px.line() if chart_type == "line" else px.bar()
-        for pred in predictions:
-            # เพิ่มข้อมูล 7 วันย้อนหลัง
-            historical = historical_data[pred["location"]]
-            fig.add_scatter(
-                x=historical.index.to_timestamp(),
-                y=historical["pm_2_5"],
-                name=f"{locations[pred['location']]['name']} (Historical)",
-                mode="lines",
-                line=dict(dash="dash"),
-            )
+        if chart_type == "line":
+            fig = px.line()
+            for pred in predictions:
+                # เพิ่มข้อมูล 7 วันย้อนหลัง
+                if time_frame == "6H":
+                    historical = historical_data_6H[pred["location"]]
+                else:
+                    historical = historical_data_1D[pred["location"]]
 
-            # เพิ่มข้อมูลที่ทำนาย
-            if chart_type == "line":
+                fig.add_scatter(
+                    x=historical.index.to_timestamp(),
+                    y=historical["pm_2_5"],
+                    name=f"{locations[pred['location']]['name']} (Historical)",
+                    mode="lines",
+                    line=dict(dash="dash"),
+                )
+
+                # เพิ่มข้อมูลที่ทำนาย
                 fig.add_scatter(
                     x=pred["timestamps"],
                     y=pred["data"],
                     name=f"{locations[pred['location']]['name']} (Predicted)",
                     mode="lines",
                 )
-            else:
+        else:
+            fig = px.bar()
+            for pred in predictions:
+                # เพิ่มข้อมูล 7 วันย้อนหลัง
+                if time_frame == "6H":
+                    historical = historical_data_6H[pred["location"]]
+                else:
+                    historical = historical_data_1D[pred["location"]]
+
+                fig.add_bar(
+                    x=historical.index.to_timestamp(),
+                    y=historical["pm_2_5"],
+                    name=f"{locations[pred['location']]['name']} (Historical)",
+                )
+
+                # เพิ่มข้อมูลที่ทำนาย
                 fig.add_bar(
                     x=pred["timestamps"],
                     y=pred["data"],
