@@ -1,31 +1,71 @@
 from dash import Dash, html, dcc, callback, Output, Input
 import plotly.express as px
 import pandas as pd
-
 from pycaret.time_series import *
 import dash_bootstrap_components as dbc
 
-model = load_model("models/best_model")
-app = Dash()
+# Load models
+models = {
+    "6H": {
+        "jsps001": load_model("models/6H_export-jsps001-1h"),
+        "jsps013": load_model("models/6H_export-jsps013-1h"),
+        "jsps014": load_model("models/6H_export-jsps014-1h"),
+        "jsps018": load_model("models/6H_export-jsps018-1h"),
+        "pm25_eng": load_model("models/6H_export-pm25_eng-1h"),
+        "r202_test_wifi": load_model("models/6H_export-r202_test_wifi-1h"),
+    },
+    "1D": {
+        "jsps001": load_model("models/export-jsps001-1h"),
+        "jsps013": load_model("models/export-jsps013-1h"),
+        "jsps014": load_model("models/export-jsps014-1h"),
+        "jsps018": load_model("models/export-jsps018-1h"),
+        "pm25_eng": load_model("models/export-pm25_eng-1h"),
+        "r202_test_wifi": load_model("models/export-r202_test_wifi-1h"),
+    },
+}
+
+# Load features
+X_features = {
+    "6H": {
+        "jsps001": pd.read_csv("6H_X_feature/export-jsps001-6H.csv"),
+        "jsps013": pd.read_csv("6H_X_feature/export-jsps013-1h-6H.csv"),
+        "jsps014": pd.read_csv("6H_X_feature/export-jsps014-1h-6H.csv"),
+        "jsps018": pd.read_csv("6H_X_feature/export-jsps018-1h.csv"),
+        "pm25_eng": pd.read_csv("6H_X_feature/export-pm25_eng-1h.csv"),
+        "r202_test_wifi": pd.read_csv("6H_X_feature/export-r202_test_wifi-1h.csv"),
+    },
+    "1D": {
+        "jsps001": pd.read_csv("7D_X_feature/export-jsps001-6H.csv"),
+        "jsps013": pd.read_csv("7D_X_feature/export-jsps013-1h-6H.csv"),
+        "jsps014": pd.read_csv("7D_X_feature/export-jsps014-1h-6H.csv"),
+        "jsps018": pd.read_csv("7D_X_feature/export-jsps018-1h-6H.csv"),
+        "pm25_eng": pd.read_csv("7D_X_feature/export-pm25_eng-1h-6H.csv"),
+        "r202_test_wifi": pd.read_csv("7D_X_feature/export-r202_test_wifi-1h-6H.csv"),
+    },
+}
+
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 app.layout = dbc.Container(
     [
         dbc.Row(
             dbc.Col(
-                html.H1(children="Title of Dash App", className="text-center my-4")
+                html.H1(
+                    children="PM2.5 Prediction Dashboard", className="text-center my-4"
+                )
             ),
         ),
         dbc.Row(
             [
-                dbc.Col(html.Label("Age"), width=6),
+                dbc.Col(html.Label("Select Time Frame"), width=6),
                 dbc.Col(
                     dcc.Dropdown(
                         options=[
-                            {"label": "Male", "value": "male"},
-                            {"label": "Female", "value": "female"},
+                            {"label": "6 Hours", "value": "6H"},
+                            {"label": "7 Days", "value": "1D"},
                         ],
-                        value="male",
-                        id="sex",
+                        value="6H",
+                        id="time_frame",
                         className="form-control mb-3",
                     ),
                     width=6,
@@ -34,80 +74,19 @@ app.layout = dbc.Container(
         ),
         dbc.Row(
             [
-                dbc.Col(html.Label("Sex"), width=6),
-                dbc.Col(
-                    dcc.Input(
-                        id="age",
-                        type="number",
-                        placeholder="Enter Age",
-                        className="form-control mb-3",
-                    ),
-                    width=6,
-                ),
-            ]
-        ),
-        dbc.Row(
-            [
-                dbc.Col(html.Label("BMI"), width=6),
-                dbc.Col(
-                    dcc.Input(
-                        id="bmi",
-                        type="number",
-                        placeholder="Enter BMI",
-                        className="form-control mb-3",
-                    ),
-                    width=6,
-                ),
-            ]
-        ),
-        dbc.Row(
-            [
-                dbc.Col(html.Label("Number of Children"), width=6),
-                dbc.Col(
-                    dcc.Input(
-                        id="children",
-                        type="number",
-                        placeholder="Enter Number of Children",
-                        className="form-control mb-3",
-                    ),
-                    width=6,
-                ),
-            ]
-        ),
-        dbc.Row(
-            [
-                dbc.Col(html.Label("Smoker"), width=6),
+                dbc.Col(html.Label("Select Location"), width=6),
                 dbc.Col(
                     dcc.Dropdown(
                         options=[
-                            {"label": "Yes", "value": "yes"},
-                            {"label": "No", "value": "no"},
+                            {"label": "JSPS001", "value": "jsps001"},
+                            {"label": "JSPS013", "value": "jsps013"},
+                            {"label": "JSPS014", "value": "jsps014"},
+                            {"label": "JSPS018", "value": "jsps018"},
+                            {"label": "PM2.5 ENG", "value": "pm25_eng"},
+                            {"label": "R202 Test Wifi", "value": "r202_test_wifi"},
                         ],
-                        value="no",
-                        id="smoker",
-                        className="form-control mb-3",
-                    ),
-                    width=6,
-                ),
-            ]
-        ),
-        dbc.Row(
-            [
-                dbc.Col(html.Label("Region"), width=6),
-                dbc.Col(
-                    dcc.Dropdown(
-                        options=[
-                            {"label": "North", "value": "north"},
-                            {"label": "Northeast", "value": "northeast"},
-                            {"label": "East", "value": "east"},
-                            {"label": "Southeast", "value": "southeast"},
-                            {"label": "South", "value": "south"},
-                            {"label": "Southwest", "value": "southwest"},
-                            {"label": "West", "value": "west"},
-                            {"label": "Northwest", "value": "northwest"},
-                        ],
-                        value="north",
-                        id="region",
+                        value="jsps001",
+                        id="location",
                         className="form-control mb-3",
                     ),
                     width=6,
@@ -115,6 +94,7 @@ app.layout = dbc.Container(
             ]
         ),
         dbc.Row(dbc.Col(html.Div(id="prediction-content", className="mt-4"))),
+        dbc.Row(dbc.Col(dcc.Graph(id="prediction-graph", className="mt-4"))),
     ],
     fluid=True,
 )
@@ -122,31 +102,29 @@ app.layout = dbc.Container(
 
 @callback(
     Output("prediction-content", "children"),
-    Input("sex", "value"),
-    Input("age", "value"),
-    Input("bmi", "value"),
-    Input("children", "value"),
-    Input("smoker", "value"),
-    Input("region", "value"),
+    Output("prediction-graph", "figure"),
+    Input("time_frame", "value"),
+    Input("location", "value"),
 )
-def predict(sex, age, bmi, children, smoker, region):
-    if None in [sex, age, bmi, children, smoker, region]:
-        return "Please provide all input values."
+def predict(time_frame, location):
+    if None in [time_frame, location]:
+        return "Please provide all input values.", {}
 
-    input_data = pd.DataFrame(
-        {
-            "sex": [sex],
-            "age": [age],
-            "bmi": [bmi],
-            "children": [children],
-            "smoker": [smoker],
-            "region": [region],
-        }
+    model = models[time_frame][location]
+    X_feature = X_features[time_frame][location]
+
+    prediction = predict_model(model, X=X_feature)
+    prediction_label = prediction["prediction_label"]
+
+    fig = px.line(
+        x=X_feature.index,
+        y=prediction_label,
+        labels={"x": "Time", "y": "PM2.5 Prediction"},
+        title=f"PM2.5 Prediction for {location} ({time_frame})",
     )
-    prediction = predict_model(model, data=input_data)
 
-    return f'Prediction: {prediction["prediction_label"][0]}'
+    return f"Prediction: {prediction_label[0]}", fig
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run_server(debug=True)
