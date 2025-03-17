@@ -296,11 +296,11 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     return sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2)
 
 
-# Map click callback
+# Callback for map click events
 @app.callback(
-    Output("map-click-layer", "children"),
-    Input("map", "click_lat_lng"),
-    State("time_frame", "value"),
+    Output("map-click-layer", "children"),  # Output: Popup content
+    Input("map", "click_lat_lng"),  # Input: Map click coordinates
+    State("time_frame", "value"),  # State: Selected time frame
 )
 def map_click(click_lat_lng, time_frame):
     if not click_lat_lng:
@@ -310,6 +310,7 @@ def map_click(click_lat_lng, time_frame):
     closest_location = None
     min_distance = float("inf")
 
+    # Find the closest location to the clicked coordinates
     for loc, info in locations.items():
         distance = calculate_distance(click_lat, click_lon, info["lat"], info["lon"])
         if distance < min_distance:
@@ -323,10 +324,13 @@ def map_click(click_lat_lng, time_frame):
         latest_data = historical_data[closest_location].iloc[-1]
         pm25 = latest_data["pm_2_5"]
 
+        # Create popup content
         popup_content = html.Div(
             [
-                html.H4(f"Location: {locations[closest_location]['name']}"),
-                html.P(f"PM2.5: {round(pm25, 2)}"),
+                html.H4(
+                    f"Location: {locations[closest_location]['name']}"
+                ),  # Location name
+                html.P(f"PM2.5: {round(pm25, 2)}"),  # PM2.5 value
             ]
         )
 
@@ -335,16 +339,16 @@ def map_click(click_lat_lng, time_frame):
     return None
 
 
-# Prediction callback
+# Callback for prediction
 @app.callback(
-    Output("prediction-modal", "is_open"),
-    Output("prediction-graph", "figure"),
-    Input("predict-button", "n_clicks"),
-    Input("close-button", "n_clicks"),
-    State("time_frame", "value"),
-    State("locations", "value"),
-    State("chart_type", "value"),
-    State("prediction-modal", "is_open"),
+    Output("prediction-modal", "is_open"),  # Output: Modal visibility
+    Output("prediction-graph", "figure"),  # Output: Prediction graph
+    Input("predict-button", "n_clicks"),  # Input: Predict button clicks
+    Input("close-button", "n_clicks"),  # Input: Close button clicks
+    State("time_frame", "value"),  # State: Selected time frame
+    State("locations", "value"),  # State: Selected locations
+    State("chart_type", "value"),  # State: Selected chart type
+    State("prediction-modal", "is_open"),  # State: Modal visibility
 )
 def predict(
     n_clicks_predict,
